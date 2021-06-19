@@ -81,17 +81,19 @@ public class FocusPane extends ScrollPane {
     }
 
     public void zoomOut(){
-        while(onScroll(-1, new Point2D(1,1))) {
-            onScroll(-1, new Point2D(1,1));
-        }
+        while (onScroll(-1, new Point2D(zoomNode.getLayoutBounds().getWidth() / 2, zoomNode.getLayoutBounds().getHeight() / 2)));
     }
     public void zoomIn(){
-        while(!onScroll(-1, new Point2D(1,1))) {
-            onScroll(2, new Point2D(1,1));
+        double centerx = zoomNode.getLayoutBounds().getWidth()/2;
+        double centery = zoomNode.getLayoutBounds().getHeight()/2;
+        while(!onScroll(-1, new Point2D(centerx,centery))) {
+            onScroll(2, new Point2D(centerx,centery));
         }
     }
     public void fitZoom(){
         zoomIn();
         zoomOut();
+        // someone please tell me why removing this makes the focus pane drift into the sunset when spamming generate
+        onScroll(0.5, new Point2D(1,1));
     }
 }

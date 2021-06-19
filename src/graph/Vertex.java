@@ -34,6 +34,18 @@ public class Vertex{
     public double distTo(Vertex other){
         return distTo(other.x,other.y);
     }
+    /**
+     * @return Radian angle to other location
+     */
+    public double angleTo(double x, double y){
+        return Math.atan2(y-this.y,x-this.x);
+    }
+    /**
+     * @return Radian angle to other vertex
+     */
+    public double angleTo(Vertex other){
+        return angleTo(other.x,other.y);
+    }
 
     public boolean addTraffickedEdge(Vertex adjacent, double trafficLevel){
         double dist = distTo(adjacent);
@@ -51,6 +63,36 @@ public class Vertex{
     public boolean removeEdge(Vertex adjacent){
         if(adjacent==null) return false;
         return connections.remove(adjacent) != null; // distances should never be null and valid
+    }
+
+    /**
+     * @return The angle/connection which is equidistantly farthest from its neighbours among all present connections, randomized.
+     * It has a normal distribution around that found angle with standard deviation of 1/4 the distance to the closest other connection.
+     * In a vertex without connections, this returns a uniformly random angle.
+     */
+    public double getLeastDenseAngleRandomized(){
+        Random rand = new Random();
+        if(connections.size()<1) return rand.nextDouble()*2*Math.PI - Math.PI;
+        if(connections.size()==1) return (angleTo(connections.keySet().toArray(Vertex[]::new)[0])+Math.PI)+(rand.nextGaussian()*Math.PI/4);
+        // get all angles-- sorted so we can find middles of the sequential pairs
+        double[] angles = connections.keySet().stream().mapToDouble(this::angleTo).sorted().toArray();
+        double[] middled = new double[angles.length];
+        int bestIndex = 0;
+        double bestDiff = 0;
+        for(int i=0;i<angles.length;i++){
+            double diff = (Math.PI - angles[i]) + (angles[0] + Math.PI);
+            if(i+1 != angles.length){
+                // wrap around from +PI to -PI
+                diff = angles[i+1] - angles[i];
+            }
+
+            middled[i] = MathHelp.clampAngleRadians(angles[i]+(diff/2)); // e.g. 190 degrees becomes 170 degrees
+            if(Math.abs(diff) > bestDiff){
+                bestDiff = Math.abs(diff);
+                bestIndex = i;
+            }
+        }
+        return MathHelp.clampAngleRadians((middled[bestIndex])+(rand.nextGaussian()*(bestDiff/8)));
     }
 
     public Vertex copyWithoutConnections(){

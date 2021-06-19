@@ -7,13 +7,13 @@ import java.util.stream.Collectors;
  * A graph implementation that stores {@link Vertex Vertices}
  * and provides convenience features for adding and removing them.
  *
- * The shortest path between two Vertices can be calculated with
- * {@link Graph#dijkstraPath(Vertex, Vertex) Dijkstra's Algorithm}.
+ * The shortest path between two Vertices can be calculated with the
+ * {@link Pathfind} class.
  *
  * Vertices are not checked on removal/entry to be reachable.
  */
 public class Graph{
-    private HashMap<String,Vertex> vertices; // retrieve vertex by its name
+    private final HashMap<String,Vertex> vertices; // retrieve vertex by its name
 
     /**
      * Constructs a graph using pre-existing vertices(no connections are modified).
@@ -28,96 +28,6 @@ public class Graph{
         System.out.println("Contained vertices: ");
         for(Vertex v : vertices.values()) System.out.println(v+" pathDist: "+v.pathDistance);
         System.out.println("\n");
-    }
-
-    public void printDijkstra(Vertex from){ // to all other nodes
-        for(Vertex v : vertices.values()){
-            if(v.equals(from)) continue;
-            printDijkstra(from, v);
-        }
-    }
-    public void printDijkstra(Vertex from, Vertex to){
-        List<Vertex> path = dijkstraPath(from, to);
-        System.out.print("Dijkstra from "+from+" to "+to+": ");
-        if(path==null){
-            System.out.println("No path found...");
-            return;
-        }
-        if(path.size()==0){
-            System.out.println("Empty path...");
-            return;
-        }
-        System.out.println("{ Dijkstra path: ");
-        for(int i=0;i<path.size()-1;i++){
-            System.out.println(path.get(i)+"->");
-        }
-        Vertex last = path.get(path.size()-1);
-        System.out.println(last+" END");
-        System.out.println("}  Distance: "+path.get(path.size()-1).pathDistance);
-        resetPaths();
-    }
-    public List<Vertex> dijkstraPath(Vertex from, Vertex to){
-        Collection<Vertex> values = vertices.values();
-
-        if(!values.contains(from)||!values.contains(to)){
-            System.out.println("Dijkstra path vertices not in graph");
-            return null;
-        }
-
-        // used to decide which frontier vertex to visit next(shortest distance)
-        Comparator<Vertex> comparator = Comparator.comparingDouble(o -> o.pathDistance);
-
-        // the set of vertices to be visited next
-        PriorityQueue<Vertex> frontier = new PriorityQueue<>(comparator);
-
-        // the set of vertices already visited
-        List<Vertex> known = new ArrayList<>();
-
-        // path cost originates from our start vertex
-        from.pathDistance = 0;
-        Vertex current = from;
-
-        while(!known.contains(to)){
-            known.add(current);
-            //System.out.println("Dijkstra knew "+current.name);
-            if(current.equals(to)) break;
-
-            for(Vertex neighbour : current.connections.keySet()){
-                double pathDist = current.pathDistance + current.connections.get(neighbour);
-                //System.out.println("Compare: "+pathDist+" < "+neighbour.pathDistance);
-                if(pathDist < neighbour.pathDistance){
-                    // if we find a shorter path, update that vertex
-                    neighbour.pathDistance = pathDist;
-                    neighbour.pathFrom = current;
-                    // rebuild the queue, because priorities do not change when we modify like above
-                    PriorityQueue<Vertex> old = frontier;
-                    frontier = new PriorityQueue<>(comparator);
-                    frontier.addAll(old);
-
-                    if(!known.contains(neighbour)) frontier.add(neighbour);
-                }
-            }
-
-            if(frontier.isEmpty()) return null;
-            else{
-                current = frontier.poll();
-            }
-        }
-
-        // follow end vertex back to start
-        List<Vertex> path = new ArrayList<>();
-        Vertex curr = to;
-        Vertex prev = to.pathFrom;
-        path.add(curr);
-        while(prev != null){
-            path.add(prev);
-            curr = prev;
-            prev = curr.pathFrom;
-        }
-        // reverse, so we go from start to end
-        Collections.reverse(path);
-        resetPaths();
-        return path;
     }
 
     public void resetPaths(){
@@ -215,8 +125,7 @@ public class Graph{
     /**
      * Removes a vertex from tracked vertices in graph.
      * <b>This does not remove existing connections to the vertex!</b>
-     * @param a
-     * @return
+     * @return If vertex was found in graph
      */
     private boolean removeVertex(Vertex a){ // CONNECTIONS NOT REMOVED
         if(a==null) return false;
@@ -238,92 +147,113 @@ public class Graph{
         if(a==null||b==null) return false;
         return a.connections.containsKey(b);
     }
-    public List<Vertex> neighbors(Vertex vert){ // finds adjacent vertices
-        if(vert==null) return null;
-        return new ArrayList<>(vert.connections.keySet());
+    public Vertex getRandomVertex(){
+        int size = vertices.size();
+        if(size==0) return null;
+        else return vertices.values().toArray(Vertex[]::new)[new Random().nextInt(size)];
     }
 
-    public static Graph generateRandomOrganic(int numVertices, int avgEdges, double avgDist, int trafficLevel){
+    /**
+     * Generates a random graph using an "organic" algorithm. The general idea for this is expanding
+     * the graph at random locations, choosing areas of less known density to expand into.
+     * @param numVertices How many vertices to populate the graph with
+     * @param edgeLevel Loosely correlates with average edges/connections-- higher values will choose to avoid dense areas less
+     * @param avgDist The average distance new vertices have from their starting vertex. Normal distribution with standard deviation of 1/6.
+     *                See {@link Vertex#getLeastDenseAngleRandomized()} for how angles are chosen.
+     * @param trafficLevel Higher values increase the average traffic. See {@link Vertex#addTraffickedEdge(Vertex, double)}
+     */
+    public static Graph generateRandomOrganic(int numVertices, double edgeLevel, double avgDist, int trafficLevel){
         long start = System.currentTimeMillis();
         Graph graph = new Graph();
-
-        numVertices = MathHelp.clamp(numVertices, 1, 1000);
+        for(int i=0;i<numVertices;i++){
+            graph.generateNextOrganic(edgeLevel, avgDist, trafficLevel);
+        }
+        System.out.println("(#"+numVertices+")Generation time: "+(System.currentTimeMillis()-start)+" ms");
+        return graph;
+    }
+    private void generateNextOrganic(double edgeLevel, double avgDist, int trafficLevel){
         // try to avoid crowding
-        avgEdges = MathHelp.clamp(avgEdges, 2, 8);
+        edgeLevel = MathHelp.clamp(edgeLevel, 2, 8);
         avgDist = Math.max(avgDist, 80);
-        double width = numVertices*20+200;
-        double height = numVertices*20+200;
 
-        final double minDist = Math.max(avgDist / 5, 80);
+        final double minDist = Math.max((avgDist / 5), 80)+80;
 
-        String max = String.valueOf(numVertices);
+        int currVertices = vertices.size();
+
+        int selections = 0;
+
+        String name = String.valueOf(currVertices+1);
+
         Random rand = new Random();
-        int count = 0;
-        while(count < numVertices){
-            //System.out.println("Count: "+count);
-            double x = rand.nextDouble()*width;
-            double y = rand.nextDouble()*height;
-            String name = String.valueOf(count);
-            while(name.length() < max.length()) name = "0".concat(name);
 
-            if(count > 0){
-                Vertex next = null;
-                List<Vertex> neighbours = new ArrayList<>();
+        double x = 0;
+        double y = 0;
 
-                while(next == null){
-                    int randIndex;
-                    randIndex = rand.nextInt(graph.vertices.size());
-                    Vertex selected = graph.vertices.values().toArray(new Vertex[0])[randIndex];
+        if(currVertices > 0){
+            Vertex next = null;
+            List<Vertex> neighbours = new ArrayList<>();
 
-                    int maxEdges = avgEdges+(rand.nextInt(5)-2);
-                    maxEdges = MathHelp.clamp(maxEdges, 1, 8);
-                    if(selected.connections.size() < maxEdges){
-                        //System.out.println("Selected: "+selected);
-                        double relaxedMinDist = minDist;
-                        while(next == null){
-                            double randDist = avgDist+(0.25*rand.nextGaussian()*avgDist);
-                            double randAngle = rand.nextDouble()*2*Math.PI;
-                            x = selected.x+Math.cos(randAngle)*randDist;
-                            y = selected.y+Math.sin(randAngle)*randDist;
-                            neighbours.add(selected);
-                            double closestDist = selected.distTo(x,y);
-                            for(Vertex v : graph.vertices.values()){
-                                double dist = v.distTo(x,y);
-                                if(dist < closestDist){
-                                    closestDist = dist;
-                                }
-                                double acceptedDist = avgDist+(0.25*rand.nextGaussian()*avgDist);
-                                acceptedDist = Math.max(acceptedDist, minDist);
-                                if(dist <= acceptedDist) neighbours.add(v);
-                            }
-                            //System.out.println("Close: "+closestDist+", Min: "+relaxedMinDist);
-                            if(closestDist > relaxedMinDist){
-                                next = new Vertex(name,x,y);
-                            }
-                            else{
-                                neighbours.clear();
-                                relaxedMinDist-=minDist*0.01; // relax over time to be lenient
-                            }
+            while(next == null){
+                Vertex selected = getRandomVertex();
+                selections++;
+
+                // determine acceptable edge levels, ignore edgy nodes
+                // random distribution like this helps avoid uniformity
+                int maxEdges = (int)(edgeLevel+(rand.nextInt(5)-2));
+                maxEdges = MathHelp.clamp(maxEdges, 1, 8);
+                // relax our maximum edges in case we cannot find a suitable node
+                // (this is very unlikely)
+                maxEdges += selections > 2*currVertices ? (int)((selections-2*currVertices)/10) : 0;
+
+                if(selected.connections.size() < maxEdges){
+                    double relaxedMinDist = minDist;
+                    while(next == null){
+                        // find the x,y of the new node
+                        double randDist = avgDist+(rand.nextGaussian()*avgDist/6);
+                        // choose the most uncrowded angle
+                        double randAngle = selected.getLeastDenseAngleRandomized();
+                        x = MathHelp.xFromPolar(randDist, randAngle);
+                        x += selected.x;
+                        y = MathHelp.yFromPolar(randDist, randAngle);
+                        y += selected.y;
+
+                        // grow the new node from the node we randomly selected to expand from
+                        neighbours.add(selected);
+                        // determine if we should re-create this new node because it is too crowded
+                        double closestDist = selected.distTo(x,y);
+                        // find the closest node in the graph and also the acceptably close neighbours
+                        // (this is very slow at O(n) for every vertex)
+                        for(Vertex v : vertices.values()){
+                            double dist = v.distTo(x,y);
+                            closestDist = Math.min(closestDist, dist);
+                            double acceptedDist = avgDist+(rand.nextGaussian()*avgDist/6);
+                            acceptedDist = Math.max(acceptedDist, minDist);
+                            if(dist <= acceptedDist) neighbours.add(v);
                         }
-                        for(Vertex neighbour : neighbours){
-                            next.addTraffickedEdge(neighbour, trafficLevel);
-                            if(!neighbour.connections.containsKey(next)){
-                                neighbour.addTraffickedEdge(next, trafficLevel);
-                            }
+                        // if it is too crowded, try again at another location
+                        if(closestDist > relaxedMinDist){
+                            next = new Vertex(name,x,y);
+                        }
+                        else{
+                            neighbours.clear();
+                            relaxedMinDist-=minDist*0.01; // relax over time to be lenient
+                        }
+                    }
+                    // connect neighbours we decided on
+                    for(Vertex neighbour : neighbours){
+                        next.addTraffickedEdge(neighbour, trafficLevel);
+                        if(!neighbour.connections.containsKey(next)){
+                            neighbour.addTraffickedEdge(next, trafficLevel);
                         }
                     }
                 }
-                graph.addVertex(next);
             }
-            else{
-                graph.addVertex(new Vertex(name,x,y));
-            }
-
-            count++;
+            addVertex(next);
         }
-
-        System.out.println("Generation time: "+(System.currentTimeMillis()-start)+" ms");
-        return graph;
+        else{
+            // first node
+            addVertex(new Vertex(name,x,y));
+        }
     }
 
     /**

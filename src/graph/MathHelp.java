@@ -21,4 +21,15 @@ public class MathHelp {
     public static double yFromPolar(double magnitude, double radians){
         return magnitude*Math.sin(radians);
     }
+
+    public static double angleDiffRadians(double from, double to){
+        double diff = to - from;
+        diff += Math.PI;
+        diff = (diff % (2*Math.PI) + (2*Math.PI)) % (2*Math.PI);
+        diff -= Math.PI;
+        return diff;
+    }
+    public static double clampAngleRadians(double angle){
+        return angleDiffRadians(0, angle);
+    }
 }

@@ -1,5 +1,6 @@
 package gui;
 
+import graph.Pathfind;
 import graph.Vertex;
 import javafx.application.Application;
 import javafx.beans.property.ObjectProperty;
@@ -45,8 +46,8 @@ public class App extends Application{
     private List<Location> drawnPath = new ArrayList<>();
 
     // user controls
-    private int selNumVertices = 40;
-    private int selAvgEdges = 3;
+    private int selNumVertices = 100;
+    private int selEdgeLevel = 3;
     private double selAvgDist = 300;
     private int selTrafficLevel = 1;
     private boolean selectingGoal = false;
@@ -57,7 +58,7 @@ public class App extends Application{
 
     @Override
     public void start(Stage stage) throws Exception {
-        graph = Graph.generateRandomOrganic(selNumVertices, selAvgEdges, selAvgDist, selTrafficLevel);
+        graph = Graph.generateRandomOrganic(selNumVertices, selEdgeLevel, selAvgDist, selTrafficLevel);
 
         StackPane view = new StackPane(); // the "view" of our nodes and connections
 
@@ -80,20 +81,20 @@ public class App extends Application{
         ToolBar tools = new ToolBar(); // controls for interaction
 
         // user controls for graph generation
-        tools.getItems().add(createSlider("# of vertices", 20, 1000, 40, val->selNumVertices=(int)val));
+        tools.getItems().add(createSlider("# of vertices", 20, 1000, selNumVertices, val->selNumVertices=(int)val));
         tools.getItems().add(new Separator());
-        tools.getItems().add(createSlider("Edge Concentration", 2, 10, 3, val->selAvgEdges=(int)val));
+        tools.getItems().add(createSlider("Edge Concentration", 2, 10, selEdgeLevel, val->selEdgeLevel=(int)val));
         tools.getItems().add(new Separator());
-        tools.getItems().add(createSlider("Average Distance", 150, 1000, 300, val->selAvgDist=val));
+        tools.getItems().add(createSlider("Average Distance", 150, 1000, selAvgDist, val->selAvgDist=val));
         tools.getItems().add(new Separator());
-        tools.getItems().add(createSlider("Traffic Level", 0, 4, 1, val->selTrafficLevel=(int)val));
+        tools.getItems().add(createSlider("Traffic Level", 0, 4, selTrafficLevel, val->selTrafficLevel=(int)val));
 
         tools.getItems().add(new Separator());
         // Randomized graph generation based on above constraints
         Button generateButton = new Button("Generate New Graph");
         generateButton.setOnAction(event -> {
             //graph = Graph.generateExample();
-            graph = Graph.generateRandomOrganic(selNumVertices, selAvgEdges, selAvgDist, selTrafficLevel);
+            graph = Graph.generateRandomOrganic(selNumVertices, selEdgeLevel, selAvgDist, selTrafficLevel);
             locations.getChildren().clear();
             connections.getChildren().clear();
             pathMarkers.getChildren().clear();
@@ -176,8 +177,11 @@ public class App extends Application{
         }
     }
 
+    /**
+     * Traverses the list of vertices found from {@link Pathfind#dijkstraPath(Graph, Vertex, Vertex)}
+     * and updates the gui to display the path.
+     */
     private void drawPath(final Group pathMarkers){
-        // draw our path to the goal
         long startTime = System.currentTimeMillis();
 
         Vertex start = startLocation.vertex;
@@ -186,11 +190,13 @@ public class App extends Application{
         //System.out.println("Start: "+start);
         //System.out.println("Goal: "+goal);
 
-        path = graph.dijkstraPath(start, goal);
+        path = Pathfind.aStarPath(graph, start, goal);
         if(path==null){
             System.out.println("Null path drawn...");
             return;
         }
+        // this time does not include drawing
+        System.out.println("(#"+path.size()+")Path generation time: "+(System.currentTimeMillis()-startTime)+" ms");
 
         // reset old paths
         for(Location l : drawnPath){
@@ -216,8 +222,6 @@ public class App extends Application{
                 break;
             }
         }
-
-        System.out.println("Path generation and display time: "+(System.currentTimeMillis()-startTime)+" ms");
     }
 
     private Node createSlider(String title, double min, double max, double defaultVal, DoubleConsumer consumer){
